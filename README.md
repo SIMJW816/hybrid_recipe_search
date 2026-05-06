@@ -35,3 +35,10 @@
  ┣ 📜 .env                        # OpenAI API 키 저장 (보안)
  ┣ 📜 .gitignore                  # 보안 및 대용량 파일 업로드 방지
  ┗ 📜 README.md                   # 프로젝트 명세서
+
+## 4. 실행 방법
+
+### Step 1: 필수 의존성 라이브러리 설치
+터미널에서 아래 명령어를 실행하여 필수 패키지를 설치합니다.
+```bash
+pip install streamlit chromadb python-dotenv pandas numpy scikit-learn plotly openai
