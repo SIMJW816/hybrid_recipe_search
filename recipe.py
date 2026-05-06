@@ -38,33 +38,34 @@ collection = get_or_create_collection()
 
 # --- 데이터 초기화 ---
 def initialize_data():
-    if collection.count() == 0:
-        with st.spinner("최초 실행: 레시피 데이터를 벡터 DB에 임베딩 중입니다... (약 1~2분 소요)"):
-            with open("recipes.json", "r", encoding="utf-8") as f:
-                recipes = json.load(f)
-            
-            ids = []
-            documents = []
-            metadatas = []
-            
-            for recipe in recipes:
-                ids.append(recipe["id"])
-                doc = f"{recipe['name']} - {recipe['description']} 재료: {recipe['ingredients']} 조리법: {recipe['instructions']}"
-                documents.append(doc)
-                
-                meta = recipe["metadata"].copy()
-                meta["name"] = recipe["name"]
-                meta["description"] = recipe["description"]
-                meta["ingredients"] = recipe["ingredients"]
-                meta["instructions"] = recipe["instructions"]
-                metadatas.append(meta)
-                
-            collection.add(
-                ids=ids,
-                documents=documents,
-                metadatas=metadatas
-            )
-        st.success("데이터베이스 구축 및 임베딩 완료!")
+    with open("recipes.json", "r", encoding="utf-8") as f:
+        recipes = json.load(f)
+
+    # ✅ ID 기반 중복 체크: DB에 이미 있는 ID는 건너뜀
+    all_ids = [r["id"] for r in recipes]
+    existing = collection.get(ids=all_ids, include=[])
+    existing_ids = set(existing["ids"])
+    
+    new_recipes = [r for r in recipes if r["id"] not in existing_ids]
+
+    if not new_recipes:
+        return  # 모두 이미 존재 → 임베딩 API 호출 없음
+
+    with st.spinner(f"최초 실행: {len(new_recipes)}개 레시피를 임베딩 중입니다... (약 1~2분 소요)"):
+        ids, documents, metadatas = [], [], []
+        for recipe in new_recipes:
+            ids.append(recipe["id"])
+            doc = f"{recipe['name']} - {recipe['description']} 재료: {recipe['ingredients']} 조리법: {recipe['instructions']}"
+            documents.append(doc)
+            meta = recipe["metadata"].copy()
+            meta["name"] = recipe["name"]
+            meta["description"] = recipe["description"]
+            meta["ingredients"] = recipe["ingredients"]
+            meta["instructions"] = recipe["instructions"]
+            metadatas.append(meta)
+
+        collection.add(ids=ids, documents=documents, metadatas=metadatas)
+    st.success(f"임베딩 완료! ({len(new_recipes)}개 신규 추가)")
 
 initialize_data()
 
