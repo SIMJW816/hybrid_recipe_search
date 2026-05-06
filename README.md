@@ -43,3 +43,43 @@
 터미널에서 아래 명령어를 실행하여 필수 패키지를 설치합니다.
 ```bash
 pip install streamlit chromadb python-dotenv pandas numpy scikit-learn plotly openai
+```
+
+### Step 2: 환경 변수 설정(API 키 보호)
+보안을 위해 API 키는 코드에 하드코딩하지 않습니다. 프로젝트 루트 폴더에 .env 파일을 생성하고 아래와 같이 OpenAI API 키를 입력하세요.
+```bash
+OPENAI_API_KEY=sk-본인의_실제_API_키를_입력하세요
+```
+
+### Step 3: 데이터베이스 초기화 및 적재
+터미널에서 아래 명령어를 통해 JSON 데이터를 읽어 임베딩하고 DB를 구축합니다. (약 1~2분 소요)
+```bash
+python db/init_db_2.py
+
+# 💡 팁: 기존 DB를 날리고 강제로 덮어쓰려면 `--reset` 옵션을 추가하세요.
+# python db/init_db_2.py --reset
+```
+
+### Step 4: 웹 애플리케이션 실행
+데이터 적재가 완료되면 아래 명령어로 Streamlit UI를 실행합니다.
+```bash
+streamlit run ui/app.py
+```
+
+## 5. 데이터셋 출처 및 메타데이터 스키마 설명
+
+### 데이터셋 출처: AI도구를 활용해 만든 240개의 다국적 레시피 JSON 데이터셋
+### 메타데이터 스키마: 필터링과 하이브리드 검색 고도화를 위해 아래 6가지의 의미 있는 메타데이터 필드를 포함합니다.
+category (문자열): 요리 카테고리 (한식, 일식, 중식, 양식, 분식, 디저트 등)
+cook_time (정수): 예상 조리 소요 시간 (분 단위)
+difficulty (문자열): 조리 난이도 (쉬움, 보통, 어려움)
+spicy_level (정수): 매운맛 강도 (0 ~ 5 단계)
+calories (정수): 1인분 기준 예상 칼로리 (kcal)
+rating (실수): 레시피 예상 평점 (0.0 ~ 5.0)
+
+## 6. 주요 확장 기능 및 구현 성과
+### 핵심 필수 요구사항 외에 아래와 같은 4가지 확장 기능을 시스템에 유기적으로 통합했습니다.
+커스텀 임베딩 함수: ChromaDB의 기본 모델 대신 OpenAIEmbeddingFunction을 활용하여 text-embedding-3-large 모델을 컬렉션에 적용, 검색의 의미론적 정확도를 극대화했습니다.
+고급 UI 대시보드: Streamlit을 활용하여 슬라이더, 드롭다운 필터, 확장/축소(Expander)형 결과 카드를 갖춘 직관적인 UI를 개발했습니다.
+벡터 2D 축소 시각화: sklearn.manifold.TSNE와 plotly.express를 결합하여 고차원 임베딩을 2D 평면에 뿌리고, 카테고리별로 색상을 매핑하여 데이터 간의 의미적 군집을 시각적으로 분석할 수 있게 하였습니다.
+실시간 검색 속도 벤치마크: 파일 기반(Numpy 선형 탐색)과 벡터 DB(HNSW 인덱싱)의 성능 차이를 증명하기 위해, 메모리 DB 상에서 데이터를 100개에서 5,000개까지 증식시키며 쿼리 응답 시간(ms)을 동적으로 측정 및 그래프화하는 기능을 구현했습니다.  
