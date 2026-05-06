@@ -1,0 +1,16 @@
+# API Key 및 환경변수 (보안)
+.env
+
+# ChromaDB 영구 저장 디렉토리 (용량 문제 및 재현성 확인용)
+chroma_db/
+./chroma_db/
+
+# Python 캐시 파일
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
