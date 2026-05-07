@@ -1,16 +1,77 @@
 # 🍲 기억의 도서관 짓기: 스마트 하이브리드 레시피 추천 시스템
 
 ## 1. 프로젝트 소개 및 아키텍처
-본 프로젝트는 ChromaDB 벡터 데이터베이스를 활용하여 구축된 지능형 레시피 검색 및 추천 시스템입니다. 기존의 단순 키워드 매칭(파일 기반 탐색)의 한계를 극복하기 위해, 사용자의 자연어 질의(문맥)를 이해하는 **순수 시맨틱 검색**과, 조리시간, 맵기, 카테고리 등의 조건을 결합한 **하이브리드 검색(Hybrid Search)**을 동시에 제공하고 비교합니다.
+
+본 프로젝트는 ChromaDB 벡터 데이터베이스를 활용한 지능형 레시피 검색·추천 시스템입니다.
+기존 파일 기반(NumPy + Pickle) 방식의 세 가지 한계를 해결합니다.
+
+- **검색 비효율** — 전체 벡터를 매번 순회하는 O(n) 코사인 유사도 → HNSW 기반 ANN O(log n)으로 대체
+- **필터링 불편** — Python for 루프 수동 필터링 → `where` 절 선언적 메타데이터 Pre-filtering
+- **영속성 불안정** — Pickle 파일 수동 관리 + 중복 임베딩 낭비 → PersistentClient 자동 저장 + ID 기반 중복 체크
 
 ### 🏗 시스템 아키텍처 및 데이터 흐름
-본 시스템은 다음과 같은 5단계의 흐름으로 작동합니다.
-1. **데이터 로딩 (Data Loading):** `recipes.json` 파일에서 240개의 다국적 레시피와 메타데이터를 로드합니다[cite: 8, 10].
-2. **임베딩 (Embedding):** 커스텀 임베딩 함수인 OpenAI의 `text-embedding-3-large` 모델을 호출하여, 레시피의 `이름`, `설명`, `재료`, `조리법`을 병합한 텍스트를 고차원 벡터로 변환합니다.
-3. **DB 저장 (DB Storage):** ChromaDB의 `PersistentClient`를 활용하여 생성된 임베딩 벡터와 메타데이터를 로컬 디스크(`.chroma_db/`)에 영구적으로 안전하게 저장합니다.
-4. **쿼리 (Querying):** Streamlit UI에서 입력받은 자연어 검색어와 메타데이터 필터 조건(`$lte`, `$gte`, `$eq`, `$and`)을 조합하여 ChromaDB에 쿼리를 전송합니다.
-5. **결과 후처리 (Post-processing):** 반환된 결과(유사도 거리 점수, 메타데이터 등)를 가공하여 순수 시맨틱 검색과 하이브리드 검색의 차이를 한눈에 비교할 수 있도록 UI 카드로 렌더링합니다.
 
+시스템은 **최초 1회 실행하는 데이터 파이프라인**과 **매 요청마다 실행되는 실시간 검색 흐름**으로 구분됩니다.
+┌─────────────────────────── 데이터 파이프라인 (최초 1회) ───────────────────────────┐
+│                                                                                    │
+│  ① 데이터 로딩  →  ② 임베딩 생성  →  ③ DB 저장                                  │
+│  recipes.json      text-embedding       PersistentClient                           │
+│  (240개 레시피)    -3-large             → ./chroma_db/                             │
+│                    (3,072차원)                                                     │
+└────────────────────────────────────────────────────────────────────────────────────┘
+↓ (저장 완료 후)
+┌─────────────────────────── 실시간 검색 흐름 ───────────────────────────────────────┐
+│                                                                                    │
+│  ④ Streamlit UI  →  ChromaDB (ANN 검색)  →  ⑤ 결과 렌더링                       │
+│  자연어 쿼리         where 절 Pre-filtering     시맨틱 vs 하이브리드 비교 카드     │
+│  + 슬라이더 필터     ($lte · $gte · $eq · $and)                                   │
+│                                                                                    │
+└────────────────────────────────────────────────────────────────────────────────────┘
+#### 단계별 설명
+
+| 단계 | 모듈 | 역할 |
+|------|------|------|
+| ① 데이터 로딩 | `init_db.py` / `app.py` | `recipes.json`에서 240개 레시피 파싱. `id`, `name`, `description`, `ingredients`, `instructions`, `metadata` 추출 |
+| ② 임베딩 생성 | `OpenAIEmbeddingFunction` | 4개 필드를 하나의 문서 문자열로 병합 후 `text-embedding-3-large` 호출 → 3,072차원 벡터 변환 |
+| ③ DB 저장 | `chromadb.PersistentClient` | 임베딩 벡터·메타데이터·원본 문서를 `./chroma_db/`에 SQLite/Parquet 형태로 영구 저장. ID 기반 중복 체크로 API 재호출 방지 |
+| ④ 쿼리 실행 | Streamlit UI + ChromaDB | 자연어 입력과 슬라이더·드롭다운 필터를 `$and` 조건으로 결합하여 ChromaDB HNSW 인덱스에 쿼리 |
+| ⑤ 결과 렌더링 | Streamlit UI | 코사인 거리 점수·메타데이터를 포함한 결과 카드. 순수 시맨틱 검색과 하이브리드 검색 결과를 나란히 비교 |
+
+#### 핵심 설계 결정
+
+**임베딩 입력 텍스트 구성**
+```python
+doc = f"{name} - {description} 재료: {ingredients} 조리법: {instructions}"
+```
+단일 벡터로 레시피의 의미 전체를 포착하기 위해 4개 필드를 병합합니다.
+
+**ID 기반 중복 체크 (API 비용 절감)**
+```python
+existing = collection.get(ids=all_ids, include=[])
+existing_ids = set(existing["ids"])
+new_recipes = [r for r in recipes if r["id"] not in existing_ids]
+# → 새 항목만 임베딩 API 호출, 기존 항목 재사용
+```
+
+**하이브리드 검색 where 절 동적 조합**
+```python
+conditions = [
+    {"cook_time":    {"$lte": max_time}},   # 조리시간 이하
+    {"spicy_level":  {"$gte": min_spicy}},  # 맵기 이상
+]
+if difficulty != "전체":
+    conditions.append({"difficulty": {"$eq": difficulty}})
+if category != "전체":
+    conditions.append({"category": {"$eq": category}})
+
+where_clause = {"$and": conditions} if len(conditions) > 1 else conditions[0]
+
+results = collection.query(
+    query_texts=[query],
+    n_results=3,
+    where=where_clause   # 필터 통과 항목 내에서만 ANN 검색 실행
+)
+```
 ---
 
 ## 2. 선택한 벡터 DB와 선택 이유
@@ -19,14 +80,7 @@
   1. **영속성(Persistent Storage) 확보:** 클라우드 서버에 의존하지 않고 로컬 스토리지에 데이터를 SQLite/Parquet 형태로 영구 저장하여, 재실행 시 임베딩 비용과 시간을 절약할 수 있습니다.
   2. **강력한 필터링 문법:** 쿼리 실행 시 딕셔너리 형태의 `where` 절을 통해 `$and`, `$eq`, `$gte`, `$lte` 등 선언적인 메타데이터 사전 필터링(Pre-filtering)을 완벽하게 지원합니다[cite: 9].
   3. **Python 생태계 최적화:** 외부 REST API 통신 없이 Python 프로세스 내에서 가볍게 동작하므로, Streamlit 기반의 대시보드 및 데이터 파이프라인과 유기적으로 결합하기 가장 적합합니다[cite: 9].
----
 
-## 2. 선택한 벡터 DB와 선택 이유
-* **선택한 벡터 DB:** **ChromaDB**[cite: 8]
-* **선택 이유:**
-  1. **영속성(Persistent Storage) 확보:** 클라우드 서버에 의존하지 않고 로컬 스토리지에 데이터를 SQLite/Parquet 형태로 영구 저장하여, 재실행 시 임베딩 비용과 시간을 절약할 수 있습니다.
-  2. **강력한 필터링 문법:** 쿼리 실행 시 딕셔너리 형태의 `where` 절을 통해 `$and`, `$eq`, `$gte`, `$lte` 등 선언적인 메타데이터 사전 필터링(Pre-filtering)을 완벽하게 지원합니다[cite: 9].
-  3. **Python 생태계 최적화:** 외부 REST API 통신 없이 Python 프로세스 내에서 가볍게 동작하므로, Streamlit 기반의 대시보드 및 데이터 파이프라인과 유기적으로 결합하기 가장 적합합니다[cite: 9].
 ---
 
 ## 3. 권장 모듈 구조 (디렉토리 트리)
