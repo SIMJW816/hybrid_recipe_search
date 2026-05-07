@@ -13,47 +13,6 @@
 
 ---
 
-graph TD
-    %% 노드 정의
-    User[📱 사용자 - Streamlit UI]
-    File[📜 data/recipes.json]
-    App[💻 앱 로직 - Python/Streamlit]
-    OpenAI[🤖 OpenAI API - text-embedding-3-large]
-    ChromaDB[🗄️ 로컬 ChromaDB - .chroma_db/]
-
-    %% 초기화 및 적재 프로세스
-    subgraph Initialization [초기 데이터 적재 프로세스]
-        direction TB
-        File -->|1. 레시피/메타데이터 로드| App
-        App -->|텍스트 병합| App
-        App -->|텍스트 전송| OpenAI
-        OpenAI -->|2. 벡터 반환| App
-        App -->|3. 벡터+메타데이터 영구 저장| ChromaDB
-    
-        style Initialization fill:#f9f,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
-    end
-
-    %% 실시간 검색 프로세스
-    subgraph SearchFlow [실시간 검색 프로세스]
-        direction LR
-        User -->|4. 자연어 쿼리 + 필터 조건 입력| App
-        App -->|검색어 텍스트| OpenAI
-        OpenAI -->|쿼리 벡터 반환| App
-        App -->|Vector Query + where절 필터| ChromaDB
-        ChromaDB -->|유사 레시피/메타데이터 반환| App
-        App -->|5. 결과 후처리 및 카드 렌더링| User
-    end
-
-    %% 스타일 정의
-    classDef main fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef external fill:#f3e5f5,stroke:#4a148c,stroke-width:1px,stroke-dasharray: 5 5;
-    classDef storage fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
-
-    class App,User main;
-    class OpenAI external;
-    class ChromaDB storage;
-
-
 ## 2. 선택한 벡터 DB와 선택 이유
 * **선택한 벡터 DB:** **ChromaDB**[cite: 8]
 * **선택 이유:**
