@@ -3,49 +3,22 @@
 ## 1. 프로젝트 소개 및 아키텍처
 본 프로젝트는 ChromaDB 벡터 데이터베이스를 활용하여 구축된 지능형 레시피 검색 및 추천 시스템입니다. 기존의 단순 키워드 매칭(파일 기반 탐색)의 한계를 극복하기 위해, 사용자의 자연어 질의(문맥)를 이해하는 **순수 시맨틱 검색**과, 조리시간, 맵기, 카테고리 등의 조건을 결합한 **하이브리드 검색(Hybrid Search)**을 동시에 제공하고 비교합니다.
 
-### 🏗 시스템 구성 및 아키텍처 다이어그램
+### 🏗 시스템 아키텍처 및 데이터 흐름
+본 시스템은 다음과 같은 5단계의 흐름으로 작동합니다.
+1. **데이터 로딩 (Data Loading):** `recipes.json` 파일에서 240개의 다국적 레시피와 메타데이터를 로드합니다[cite: 8, 10].
+2. **임베딩 (Embedding):** 커스텀 임베딩 함수인 OpenAI의 `text-embedding-3-large` 모델을 호출하여, 레시피의 `이름`, `설명`, `재료`, `조리법`을 병합한 텍스트를 고차원 벡터로 변환합니다.
+3. **DB 저장 (DB Storage):** ChromaDB의 `PersistentClient`를 활용하여 생성된 임베딩 벡터와 메타데이터를 로컬 디스크(`.chroma_db/`)에 영구적으로 안전하게 저장합니다.
+4. **쿼리 (Querying):** Streamlit UI에서 입력받은 자연어 검색어와 메타데이터 필터 조건(`$lte`, `$gte`, `$eq`, `$and`)을 조합하여 ChromaDB에 쿼리를 전송합니다.
+5. **결과 후처리 (Post-processing):** 반환된 결과(유사도 거리 점수, 메타데이터 등)를 가공하여 순수 시맨틱 검색과 하이브리드 검색의 차이를 한눈에 비교할 수 있도록 UI 카드로 렌더링합니다.
 
-```mermaid
-graph TD
-    %% 노드 정의
-    User
-    File
-    App
-    OpenAI
-    ChromaDB
+---
 
-    %% 서브그래프: 초기화 및 적재 (Offline/Init Process)
-    subgraph Initialization
-        direction TB
-        File -->|1. 레시피/메타데이터 로드| App
-        App -->|텍스트 병합| App
-        App -->|텍스트 전송| OpenAI
-        OpenAI -->|2. 벡터(Embedding) 반환| App
-        App -->|3. 벡터+메타데이터 영구 저장| ChromaDB
-    
-        style Initialization fill:#f9f,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
-    end
-
-    %% 서브그래프: 검색 프로세스 (Online Process)
-    subgraph SearchFlow
-        direction LR
-        User -->|4. 자연어 쿼리 + 필터 조건 입력| App
-        App -->|검색어 텍스트| OpenAI
-        OpenAI -->|쿼리 벡터 반환| App
-        App -->|Vector Query + where절 필터| ChromaDB
-        ChromaDB -->|유사 레시피/메타데이터 반환| App
-        App -->|5. 결과 후처리 및 카드 렌더링| User
-    end
-
-    %% 스타일 정의
-    classDef main fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef external fill:#f3e5f5,stroke:#4a148c,stroke-width:1px,stroke-dasharray: 5 5;
-    classDef storage fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
-
-    class App,User main;
-    class OpenAI external;
-    class ChromaDB storage;
-
+## 2. 선택한 벡터 DB와 선택 이유
+* **선택한 벡터 DB:** **ChromaDB**[cite: 8]
+* **선택 이유:**
+  1. **영속성(Persistent Storage) 확보:** 클라우드 서버에 의존하지 않고 로컬 스토리지에 데이터를 SQLite/Parquet 형태로 영구 저장하여, 재실행 시 임베딩 비용과 시간을 절약할 수 있습니다.
+  2. **강력한 필터링 문법:** 쿼리 실행 시 딕셔너리 형태의 `where` 절을 통해 `$and`, `$eq`, `$gte`, `$lte` 등 선언적인 메타데이터 사전 필터링(Pre-filtering)을 완벽하게 지원합니다[cite: 9].
+  3. **Python 생태계 최적화:** 외부 REST API 통신 없이 Python 프로세스 내에서 가볍게 동작하므로, Streamlit 기반의 대시보드 및 데이터 파이프라인과 유기적으로 결합하기 가장 적합합니다[cite: 9].
 ---
 
 ## 2. 선택한 벡터 DB와 선택 이유
